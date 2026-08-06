@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1280, initial-scale=1.5">
+<title>John Deere Ceres Tolvas — Dashboard Siembra</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+:root {
+  --bg:#0d1117; --surface:#161b22; --surface2:#21262d; --border:#30363d;
+  --text:#e6edf3; --muted:#8b949e; --accent:#4ade80;
+  --s2026:#58a6ff; --s2025:#f0b429; --s2025F:#a78bfa;
+  --soja:#4ade80; --maiz:#e85d04; --trigo:#9ef0f0; --cebada:#c084fc; --avena:#fb923c; --otros:#64748b;
+  --green:#3fb950; --red:#f85149;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh;overflow-x:hidden;}
+
+#loading-screen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;gap:16px;}
+#loading-screen.hidden{display:none;}
+.loading-logo{font-weight:800;font-size:22px;letter-spacing:-.5px;}
+.loading-bar-bg{width:240px;height:3px;background:var(--border);border-radius:2px;}
+.loading-bar-fill{height:100%;background:var(--accent);border-radius:2px;width:0%;transition:width .4s;}
+.loading-text{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);}
+
+.header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 24px;height:52px;display:flex;align-items:center;gap:16px;position:sticky;top:0;z-index:200;}
+.header-logo{font-weight:800;font-size:14px;letter-spacing:-.5px;line-height:1.15;display:flex;flex-direction:column;}
+.logo-jd{color:#367c2b;} .logo-ceres{color:var(--accent);} .logo-rest{color:var(--text);}
+.header-divider{width:1px;height:24px;background:var(--border);}
+.header-subtitle{font-family:'Space Mono',monospace;font-size:11px;color:var(--muted);letter-spacing:.5px;}
+.header-tabs{margin-left:auto;display:flex;gap:4px;}
+.tab-btn{padding:6px 14px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--muted);font-family:'Syne',sans-serif;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;}
+.tab-btn:hover{background:var(--surface2);color:var(--text);}
+.tab-btn.active{background:var(--accent);color:#000;border-color:var(--accent);}
+
+.filter-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:6px 24px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.filter-label{font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.8px;text-transform:uppercase;white-space:nowrap;}
+.filter-chip{padding:3px 10px;border-radius:20px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-family:'Syne',sans-serif;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:5px;}
+.filter-chip .dot{width:7px;height:7px;border-radius:50%;}
+.filter-chip.active{border-color:var(--accent);background:rgba(74,222,128,.12);}
+.filter-chip:hover{border-color:var(--accent);}
+.filter-sep{width:1px;height:18px;background:var(--border);flex-shrink:0;}
+.season-toggle{display:flex;gap:4px;}
+.season-btn{padding:3px 12px;border-radius:20px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-family:'Space Mono',monospace;font-size:11px;font-weight:700;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:5px;}
+.season-btn .sdot{width:7px;height:7px;border-radius:50%;}
+.season-btn.active-2026{border-color:var(--s2026);background:rgba(88,166,255,.12);color:var(--s2026);}
+.season-btn.active-2025{border-color:var(--s2025);background:rgba(240,180,41,.12);color:var(--s2025);}
+.season-btn.active-2025F{border-color:var(--s2025F);background:rgba(167,139,250,.12);color:var(--s2025F);}
+.season-btn:not(.active-2026):not(.active-2025):not(.active-2025F){opacity:.45;}
+.filter-info{font-size:10px;color:var(--text);font-weight:700;margin-left:4px;white-space:nowrap;}
+
+.partido-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:5px 24px;display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+
+.page{display:none;} .page.active{display:block;}
+
+.page1-grid{display:grid;grid-template-columns:1fr;grid-template-rows:auto 1fr;height:calc(100vh - 52px - 43px - 38px);}
+.kpi-row{grid-column:1/-1;}
+
+.kpi-row{grid-column:1/-1;background:var(--border);display:flex;flex-direction:column;gap:1px;}
+.kpi-main{display:grid;grid-template-columns:1fr 1px 1fr 1px 1fr;gap:1px;}
+.kpi-sep-v{background:var(--border);}
+.kpi-card{background:var(--surface);padding:12px 16px;position:relative;overflow:hidden;}
+.kpi-card::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;opacity:0;transition:opacity .2s;}
+.kpi-card:hover::after{opacity:1;}
+.kpi-card.s2026::after{background:var(--s2026);}
+.kpi-card.s2025::after{background:var(--s2025);}
+.kpi-card.s2025F::after{background:var(--s2025F);}
+.kpi-season-tag{font-family:'Space Mono',monospace;font-size:9px;font-weight:700;padding:2px 6px;border-radius:8px;margin-bottom:4px;display:inline-block;}
+.kpi-season-tag.t2026{background:rgba(88,166,255,.15);color:var(--s2026);}
+.kpi-season-tag.t2025{background:rgba(240,180,41,.15);color:var(--s2025);}
+.kpi-season-tag.t2025F{background:rgba(167,139,250,.15);color:var(--s2025F);}
+.kpi-label{font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.8px;text-transform:uppercase;margin-bottom:3px;}
+.kpi-value{font-family:'Space Mono',monospace;font-size:20px;font-weight:700;color:var(--text);line-height:1;}
+.kpi-unit{font-size:10px;color:var(--muted);margin-left:2px;}
+.kpi-delta{display:inline-flex;align-items:center;gap:3px;font-family:'Space Mono',monospace;font-size:10px;font-weight:700;padding:2px 6px;border-radius:8px;margin-top:3px;}
+.kpi-delta.up{background:rgba(63,185,80,.15);color:var(--green);}
+.kpi-delta.dn{background:rgba(248,81,73,.15);color:var(--red);}
+.kpi-delta.neu{background:rgba(139,148,158,.1);color:var(--muted);}
+
+.map-container{position:relative;overflow:hidden;}
+#map{width:100%;height:100%;}
+.map-legend{position:absolute;bottom:16px;left:16px;z-index:1000;background:rgba(13,17,23,.93);border:1px solid var(--border);border-radius:8px;padding:10px 14px;}
+.legend-section-title{font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.8px;text-transform:uppercase;margin-bottom:5px;}
+.legend-row{display:flex;align-items:center;gap:8px;margin-bottom:3px;font-size:11px;color:var(--muted);}
+.legend-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+.legend-sep{height:1px;background:var(--border);margin:7px 0;}
+
+.right-panel{background:var(--surface);display:flex;flex-direction:column;}
+.panel-section{padding:12px 14px;border-bottom:1px solid var(--border);}
+.panel-title{font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.8px;text-transform:uppercase;margin-bottom:8px;}
+.donut-wrap{position:relative;height:175px;display:flex;align-items:center;justify-content:center;}
+#donutChart{max-width:175px;}
+.donut-center{position:absolute;text-align:center;pointer-events:none;}
+.donut-center-val{font-family:'Space Mono',monospace;font-size:17px;font-weight:700;}
+.donut-center-lbl{font-size:9px;color:var(--muted);letter-spacing:.8px;}
+
+.crop-compare-item{padding:6px 0;border-bottom:1px solid rgba(48,54,61,.4);}
+.crop-compare-item:last-child{border-bottom:none;}
+.cci-header{display:flex;align-items:center;gap:7px;margin-bottom:4px;}
+.cci-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.cci-name{font-size:12px;font-weight:700;flex:1;}
+.cci-bars{display:flex;flex-direction:column;gap:3px;}
+.cci-bar-row{display:flex;align-items:center;gap:6px;}
+.cci-bar-lbl{font-family:'Space Mono',monospace;font-size:9px;width:120px;flex-shrink:0;}
+.cci-bar-lbl.t2026{color:var(--s2026);}
+.cci-bar-lbl.t2025{color:var(--s2025);}
+.cci-bar-lbl.t2025F{color:var(--s2025F);}
+.cci-bar-bg{flex:1;height:4px;background:var(--border);border-radius:2px;}
+.cci-bar-fill{height:100%;border-radius:2px;transition:width .5s;}
+
+.partido-compare{overflow-y:auto;flex:1;}
+.partido-row{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(48,54,61,.3);cursor:pointer;}
+.partido-row:hover{opacity:.8;}
+.partido-name{font-size:11px;font-weight:700;width:95px;flex-shrink:0;text-transform:capitalize;}
+.partido-bars{flex:1;display:flex;flex-direction:column;gap:2px;}
+.pb-row{display:flex;align-items:center;gap:4px;}
+.pb-bg{flex:1;height:3px;background:var(--border);border-radius:2px;}
+.pb-fill{height:100%;border-radius:2px;}
+.pb-val{font-family:'Space Mono',monospace;font-size:9px;width:52px;text-align:right;flex-shrink:0;}
+.pb-val.t2026{color:var(--s2026);}
+.pb-val.t2025{color:var(--s2025);}
+.pb-val.t2025F{color:var(--s2025F);}
+
+.page2-wrap{height:calc(100vh - 52px - 43px - 38px);overflow:auto;}
+.p2-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);}
+.p2-full{grid-column:1/-1;}
+.chart-panel{background:var(--surface);padding:14px 18px;}
+.chart-title{font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+.chart-legend{display:flex;gap:10px;margin-left:auto;}
+.cl-item{display:flex;align-items:center;gap:4px;font-size:10px;}
+.cl-dot{width:8px;height:8px;border-radius:50%;}
+.chart-wrap{height:300px;position:relative;}
+.chart-wrap-lg{height:340px;position:relative;}
+
+.table-wrap{overflow:auto;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+thead th{background:var(--surface2);color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;padding:8px 12px;text-align:left;position:sticky;top:0;border-bottom:1px solid var(--border);}
+tbody tr{border-bottom:1px solid rgba(48,54,61,.4);transition:background .1s;}
+tbody tr:hover{background:var(--surface2);}
+tbody td{padding:7px 12px;font-family:'Space Mono',monospace;font-size:11px;}
+tbody td:first-child{font-family:'Syne',sans-serif;font-size:11px;font-weight:600;}
+.td-right{text-align:right;}
+
+.td-crop{display:inline-flex;align-items:center;gap:5px;}
+.td-dot{width:7px;height:7px;border-radius:50%;}
+.td-season{font-family:'Space Mono',monospace;font-size:9px;padding:2px 6px;border-radius:8px;font-weight:700;}
+.td-season.t2026{background:rgba(88,166,255,.15);color:var(--s2026);}
+.td-season.t2025{background:rgba(240,180,41,.15);color:var(--s2025);}
+.td-season.t2025F{background:rgba(167,139,250,.15);color:var(--s2025F);}
+.td-partido{font-size:10px;color:var(--muted);text-transform:capitalize;}
+
+
+.page4-wrap{height:calc(100vh - 52px - 43px - 38px);overflow:auto;}
+.maq-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--border);}
+.maq-kpi-card{background:var(--surface);padding:12px 16px;}
+.maq-kpi-label{font-size:9px;color:var(--muted);font-weight:700;letter-spacing:.8px;text-transform:uppercase;margin-bottom:4px;}
+.maq-kpi-value{font-family:'Space Mono',monospace;font-size:22px;font-weight:700;color:var(--accent);line-height:1;}
+.maq-kpi-sub{font-size:10px;color:var(--muted);margin-top:3px;}
+.maq-model-pills{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;}
+.maq-model-pill{font-family:'Space Mono',monospace;font-size:10px;padding:2px 8px;border-radius:10px;background:rgba(88,166,255,.12);color:var(--s2026);border:1px solid rgba(88,166,255,.25);}
+.maq-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);}
+.maq-grid-full{grid-column:1/-1;}
+.maq-panel{background:var(--surface);padding:14px 18px;}
+.maq-panel-title{font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.8px;text-transform:uppercase;margin-bottom:10px;}
+.maq-chart-wrap{height:220px;position:relative;}
+.maq-chart-wrap-lg{height:260px;position:relative;}
+.maq-table-wrap{overflow-x:auto;overflow-y:auto;max-height:400px;}
+.maq-table{width:100%;border-collapse:collapse;font-size:11px;}
+.maq-table thead th{background:var(--surface2);color:var(--muted);font-size:9px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;padding:7px 10px;text-align:left;position:sticky;top:0;border-bottom:1px solid var(--border);}
+.maq-table tbody tr{border-bottom:1px solid rgba(48,54,61,.3);transition:background .1s;}
+.maq-table tbody tr:hover{background:var(--surface2);}
+.maq-table tbody td{padding:6px 10px;font-family:'Space Mono',monospace;font-size:10px;}
+.maq-tag-model{font-family:'Space Mono',monospace;font-size:10px;font-weight:700;color:var(--accent);}
+.maq-season-chips{display:flex;gap:3px;flex-wrap:wrap;}
+.maq-season-chip{font-size:8px;padding:1px 5px;border-radius:6px;font-family:'Space Mono',monospace;font-weight:700;}
+.maq-season-chip.t2026{background:rgba(88,166,255,.15);color:var(--s2026);}
+.maq-season-chip.t2025{background:rgba(240,180,41,.15);color:var(--s2025);}
+.maq-season-chip.t2025F{background:rgba(167,139,250,.15);color:var(--s2025F);}
+
+.detail-search-bar{background:var(--surface);border-bottom:1px solid var(--border);padding:7px 16px;display:flex;align-items:center;gap:8px;}
+.detail-search-input{flex:1;max-width:320px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Space Mono',monospace;font-size:11px;padding:5px 10px;outline:none;transition:border-color .15s;}
+.detail-search-input:focus{border-color:var(--accent);}
+.detail-search-input::placeholder{color:var(--muted);}
+.detail-search-clear{background:none;border:none;color:var(--muted);cursor:pointer;font-size:13px;padding:2px 6px;border-radius:4px;line-height:1;transition:color .15s;}
+.detail-search-clear:hover{color:var(--text);}
+.detail-search-count{font-size:10px;color:var(--muted);font-family:'Space Mono',monospace;margin-left:4px;}
+
+.map-tooltip{position:fixed;background:rgba(13,17,23,.96);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font-size:12px;pointer-events:none;z-index:9999;min-width:195px;display:none;}
+.tt-title{font-weight:700;font-size:13px;margin-bottom:6px;}
+.tt-row{display:flex;justify-content:space-between;gap:16px;margin-bottom:2px;}
+.tt-key{color:var(--muted);} .tt-val{font-family:'Space Mono',monospace;font-weight:700;}
+
+::-webkit-scrollbar{width:5px;height:5px;}
+::-webkit-scrollbar-track{background:var(--bg);}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+.leaflet-container{background:#1a2332!important;}
+.leaflet-control-zoom a{background:var(--surface2)!important;color:var(--text)!important;border-color:var(--border)!important;}
+</style>
+</head>
+<body>
+
+<div id="loading-screen">
+  <div class="loading-logo">
+    <span style="color:#367c2b">John Deere</span> <span style="color:var(--accent)">Ceres</span> <span>Tolvas</span>
+  </div>
+  <div class="loading-bar-bg"><div class="loading-bar-fill" id="loading-bar"></div></div>
+  <div class="loading-text" id="loading-text">Cargando datos...</div>
+</div>
+
+<div class="header">
+  <div class="header-logo">
+    <span class="logo-jd" style="font-size:13px;">John Deere</span>
+    <span><span class="logo-ceres">Ceres</span> <span class="logo-rest">Tolvas</span></span>
+  </div>
+  <div class="header-divider"></div>
+  <div class="header-subtitle">DASHBOARD SIEMBRA · ADR · BUENOS AIRES</div>
+  <div class="header-tabs">
+    <button class="tab-btn active" onclick="showPage(1)">📍 Mapa & Resumen</button>
+    <button class="tab-btn" onclick="showPage(2)">📊 Comparación</button>
+    <button class="tab-btn" onclick="showPage(3)">🗂️ Detalle</button>
+    <button class="tab-btn" onclick="showPage(4)">🚜 Máquinas</button>
+    <div class="header-divider"></div>
+    <button class="tab-btn" onclick="exportHTML()" style="background:#238636;color:#fff;border-color:#238636;">⬇️ Exportar HTML</button>
+  </div>
+</div>
+
+<div class="filter-bar">
+  <span class="filter-label">Cultivo</span>
+  <div class="filter-chip active" data-filter="all" onclick="setFilter('all')">Todos</div>
+  <div class="filter-chip" data-filter="Soja" onclick="setFilter('Soja')"><span class="dot" style="background:var(--soja)"></span>Soja</div>
+  <div class="filter-chip" data-filter="Maiz" onclick="setFilter('Maiz')"><span class="dot" style="background:var(--maiz)"></span>Maíz</div>
+  <div class="filter-chip" data-filter="Trigo" onclick="setFilter('Trigo')"><span class="dot" style="background:var(--trigo)"></span>Trigo</div>
+  <div class="filter-chip" data-filter="Cebada" onclick="setFilter('Cebada')"><span class="dot" style="background:var(--cebada)"></span>Cebada</div>
+  <div class="filter-chip" data-filter="Avena" onclick="setFilter('Avena')"><span class="dot" style="background:var(--avena)"></span>Avena</div>
+  <div class="filter-sep"></div>
+  <div class="season-toggle">
+    <button class="season-btn active-2026" id="sbtn-2026" onclick="toggleSeason('2026')"><span class="sdot" style="background:var(--s2026)"></span>2026</button>
+    <button class="season-btn active-2025" id="sbtn-2025" onclick="toggleSeason('2025')"><span class="sdot" style="background:var(--s2025)"></span>2025</button>
+    <button class="season-btn active-2025F" id="sbtn-2025F" onclick="toggleSeason('2025F')"><span class="sdot" style="background:var(--s2025F)"></span>2025 Final</button>
+  </div>
+  <span class="filter-info" id="filter-count"></span>
+</div>
+
+<div class="partido-bar" id="partido-bar">
+  <span class="filter-label">Partido</span>
+</div>
+
+<!-- PAGE 1 -->
+<div class="page active" id="page1">
+  <div class="page1-grid">
+    <div class="kpi-row">
+      <div class="kpi-main">
+        <!-- Área 2026 -->
+        <div class="kpi-card s2026">
+          <div class="kpi-season-tag t2026">2026</div>
+          <div class="kpi-label">Superficie Sembrada</div>
+          <div class="kpi-value" id="kpi-area-2026">—<span class="kpi-unit">ha</span></div>
+          <div id="kpi-delta-area" class="kpi-delta neu">—</div>
+        </div>
+        <div class="kpi-sep-v"></div>
+        <!-- Área 2025 -->
+        <div class="kpi-card s2025">
+          <div class="kpi-season-tag t2025">2025</div>
+          <div class="kpi-label">Superficie Sembrada</div>
+          <div class="kpi-value" id="kpi-area-2025">—<span class="kpi-unit">ha</span></div>
+        </div>
+        <div class="kpi-sep-v"></div>
+        <!-- Área 2025F -->
+        <div class="kpi-card s2025F">
+          <div class="kpi-season-tag t2025F">2025 Final</div>
+          <div class="kpi-label">Superficie Sembrada</div>
+          <div class="kpi-value" id="kpi-area-2025F">—<span class="kpi-unit">ha</span></div>
+        </div>
+      </div>
+    </div>
+    <div style="grid-column:1/-1;display:grid;grid-template-columns:300px 1fr 1fr;height:100%;overflow:hidden;gap:1px;background:var(--border);">
+      <!-- COL 1: ADR map -->
+      <div style="background:var(--surface);display:flex;flex-direction:column;padding:12px 14px 14px 14px;overflow:hidden;">
+        <div class="panel-title" style="margin-bottom:6px;">🗺️ Zona de Responsabilidad</div>
+        <svg id="adr-svg" viewBox="0 0 270 210" xmlns="http://www.w3.org/2000/svg" style="width:100%;flex:1;min-height:200px;display:block;border-radius:6px;background:#0d1117;max-height:calc(100% - 24px);"></svg>
+      </div>
+      <!-- COL 2: donut + por cultivo -->
+      <div style="background:var(--surface);display:flex;flex-direction:column;overflow:hidden;">
+        <div class="panel-section">
+          <div class="panel-title">🌱 Área por Cultivo</div>
+          <div class="donut-wrap" style="height:160px;">
+            <canvas id="donutChart"></canvas>
+            <div class="donut-center"><div class="donut-center-val" id="dcval">—</div><div class="donut-center-lbl">HECTÁREAS</div></div>
+          </div>
+        </div>
+        <div class="panel-section" style="overflow-y:auto;flex:1;">
+          <div class="panel-title">📋 Por Cultivo — Todas las Temporadas</div>
+          <div id="crop-compare-list"></div>
+        </div>
+      </div>
+      <!-- COL 3: por partido -->
+      <div style="background:var(--surface);display:flex;flex-direction:column;padding:12px 14px;overflow-y:auto;">
+        <div class="panel-title" style="margin-bottom:8px;">📊 Por Partido (hectáreas)</div>
+        <div id="partido-compare-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE 2 -->
+<div class="page" id="page2">
+  <div class="page2-wrap">
+    <div class="p2-grid">
+      <div class="chart-panel p2-full">
+        <div class="chart-title">Área por Partido (ha)
+          <div class="chart-legend">
+            <div class="cl-item"><div class="cl-dot" style="background:#58a6ff"></div>2026</div>
+            <div class="cl-item"><div class="cl-dot" style="background:#f0b429"></div>2025</div>
+            <div class="cl-item"><div class="cl-dot" style="background:#a78bfa"></div>2025F</div>
+          </div>
+        </div>
+        <div class="chart-wrap"><canvas id="areaPartidoChart"></canvas></div>
+      </div>
+      <div class="chart-panel p2-full">
+        <div class="chart-title">Área por Cultivo (ha)</div>
+        <div class="chart-wrap"><canvas id="areaCropChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE 3 -->
+<div class="page" id="page3">
+  <div class="detail-search-bar">
+    <span class="filter-label">Buscar firma</span>
+    <input id="firma-search" class="detail-search-input" type="text" placeholder="Nombre del productor..." oninput="onFirmaSearch(this.value)">
+    <button class="detail-search-clear" onclick="clearFirmaSearch()" title="Limpiar">✕</button>
+    <span class="detail-search-count" id="firma-count"></span>
+  </div>
+  <div class="table-wrap" style="height:calc(100vh - 52px - 43px - 38px - 37px)">
+    <table>
+      <thead><tr>
+        <th>Temporada</th><th>Partido</th><th>Productor</th><th>Cultivo</th>
+        <th>Variedad</th>
+        <th style="text-align:right">Área (ha)</th>
+        <th style="text-align:right">Total Material</th>
+        <th>Máquina</th>
+      </tr></thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="map-tooltip" id="map-tooltip"></div>
+
+<!-- PAGE 4 MÁQUINAS -->
+<div class="page" id="page4">
+  <div class="page4-wrap">
+    <div class="maq-kpi-row">
+      <div class="maq-kpi-card">
+        <div class="maq-kpi-label">Máquinas Únicas</div>
+        <div class="maq-kpi-value" id="maq-total">—</div>
+        <div class="maq-kpi-sub">sembradoras identificadas</div>
+      </div>
+      <div class="maq-kpi-card">
+        <div class="maq-kpi-label">Modelos Detectados</div>
+        <div class="maq-kpi-value" id="maq-modelos-count">—</div>
+        <div class="maq-model-pills" id="maq-model-pills"></div>
+      </div>
+      <div class="maq-kpi-card">
+        <div class="maq-kpi-label">Ha Promedio por Máquina</div>
+        <div class="maq-kpi-value" id="maq-ha-prom">—</div>
+        <div class="maq-kpi-sub">hectáreas / sembradora</div>
+      </div>
+      <div class="maq-kpi-card">
+        <div class="maq-kpi-label">Modelo más Usado</div>
+        <div class="maq-kpi-value" id="maq-top-model" style="font-size:16px;margin-top:2px;">—</div>
+        <div class="maq-kpi-sub" id="maq-top-model-sub"></div>
+      </div>
+    </div>
+    <div class="maq-grid">
+      <div class="maq-panel maq-grid-full">
+        <div class="maq-panel-title">Área Sembrada por Modelo (ha)</div>
+        <div class="maq-chart-wrap"><canvas id="maqAreaModelChart"></canvas></div>
+      </div>
+    </div>
+    <div class="maq-panel" style="background:var(--surface);padding:14px 18px;">
+      <div class="maq-panel-title">Detalle por Máquina</div>
+      <div class="maq-table-wrap">
+        <table class="maq-table">
+          <thead><tr>
+            <th>Modelo</th><th>VIN</th><th>Temporadas</th>
+            <th style="text-align:right">Área Total (ha)</th>
+            <th>Cultivos</th>
+            <th>Productores</th>
+          </tr></thead>
+          <tbody id="maq-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+// ── CROP MAPPING ────────────────────────────────────────────────────────────
+const CROP_MAP = {
+  'SOYBEANS':'Soja','CORN_WET':'Maiz','WHEAT':'Trigo','WHEAT_DURUM':'Trigo',
+  'WHEAT_HRD_RD_WTR':'Trigo','WHEAT_EURO_WTR':'Trigo','BARLEY':'Cebada',
+  'BARLEY_EURO_WTR':'Cebada','OATS':'Avena'
+};
+const PARTIDO_DISPLAY = {
+  'SANCAYETANO': 'San Cayetano',
+  'TRESARROYOS': 'Tres Arroyos',
+  'NECOCHEA':    'Necochea',
+  'TANDIL':      'Tandil',
+  'LOBERIA':     'Lobería',
+  'DORREGO':     'Dorrego',
+  'CHAVES':      'Chaves',
+  'AYACUCHO':    'Ayacucho',
+};
+function displayPartido(p) {
+  return PARTIDO_DISPLAY[p] || (p.charAt(0) + p.slice(1).toLowerCase());
+}
+
+const CROP_COLORS = {'Soja':'#4ade80','Maiz':'#e85d04','Trigo':'#9ef0f0','Cebada':'#c084fc','Avena':'#fb923c','OTROS':'#64748b'};
+const SEASON_COLORS = {'2026':'#58a6ff','2025':'#f0b429','2025F':'#a78bfa'};
+const SEASONS = ['2026','2025','2025F'];
+
+// ── ADR ZONE MAP ─────────────────────────────────────────────────────────────
+const ADR_PARTIDOS = [{"name":"Rauch","coords":[[-36.1619,-58.8154],[-36.208,-58.7636],[-36.2255,-58.7833],[-36.3634,-58.597],[-36.3473,-58.5784],[-36.452,-58.4376],[-36.7002,-58.7208],[-36.7426,-58.6665],[-36.7527,-58.7199],[-36.7894,-58.7903],[-36.8364,-58.8358],[-36.8381,-58.8655],[-36.8607,-58.8722],[-36.8755,-58.91],[-36.9362,-58.9366],[-36.9612,-59.0219],[-37.025,-59.0403],[-37.0626,-59.0898],[-36.8445,-59.3597],[-36.8173,-59.3473],[-36.7648,-59.2803],[-36.6463,-59.2561],[-36.6162,-59.2273],[-36.5735,-59.2225],[-36.5906,-59.1955],[-36.5424,-59.138],[-36.4933,-59.2027],[-36.4833,-59.1905],[-36.4373,-59.2501],[-36.4209,-59.2296],[-36.374,-59.2897],[-36.3212,-59.2181],[-36.2755,-59.1063],[-36.2467,-59.1026],[-36.2217,-59.0711],[-36.2147,-59.0228],[-36.1504,-58.8803],[-36.1417,-58.8411],[-36.1619,-58.8154]]},{"name":"Benito Juárez","coords":[[-37.3395,-59.9876],[-37.3799,-60.0373],[-37.4471,-59.9533],[-37.3708,-59.8607],[-37.3554,-59.8805],[-37.3115,-59.827],[-37.2564,-59.8123],[-37.2378,-59.7804],[-37.6504,-59.2262],[-37.701,-59.2742],[-37.7338,-59.3403],[-37.9998,-59.6762],[-37.9794,-59.673],[-37.9561,-59.7175],[-37.9132,-59.7543],[-37.7947,-59.9364],[-37.8599,-60.0196],[-37.8285,-60.059],[-37.8515,-60.0872],[-37.7275,-60.2614],[-37.7771,-60.3232],[-37.6972,-60.4238],[-37.6619,-60.378],[-37.5894,-60.4666],[-37.4961,-60.3495],[-37.373,-60.5019],[-37.3488,-60.4707],[-37.3751,-60.4376],[-37.1766,-60.2008],[-37.3395,-59.9876]]},{"name":"Tandil","coords":[[-36.9164,-59.2654],[-37.0626,-59.0898],[-37.4105,-58.6114],[-37.8262,-59.1108],[-37.7579,-59.1338],[-37.7369,-59.1655],[-37.7005,-59.1706],[-37.6595,-59.1523],[-37.6277,-59.1661],[-37.6164,-59.1848],[-37.6504,-59.2262],[-37.2378,-59.7804],[-37.2159,-59.7001],[-37.132,-59.5865],[-37.0972,-59.5673],[-37.0823,-59.5216],[-37.0361,-59.4801],[-37.021,-59.437],[-36.8966,-59.3598],[-36.8445,-59.3597],[-36.9164,-59.2654]]},{"name":"Adolfo Gonzales Chaves","coords":[[-37.6619,-60.378],[-37.6972,-60.4238],[-37.7771,-60.3232],[-37.7275,-60.2614],[-37.8515,-60.0872],[-37.8285,-60.059],[-37.8599,-60.0196],[-37.7947,-59.9364],[-37.9132,-59.7543],[-38.0238,-59.6418],[-38.1469,-59.7897],[-38.1552,-59.7785],[-38.1646,-59.7896],[-38.1908,-59.7548],[-38.2104,-59.7774],[-38.1972,-59.795],[-38.2313,-59.835],[-38.1568,-59.8867],[-38.2806,-60.0371],[-38.0163,-60.3704],[-38.0898,-60.4633],[-38.1065,-60.4424],[-38.1919,-60.5494],[-38.028,-60.7598],[-38.0158,-60.7449],[-37.9346,-60.8464],[-37.7209,-60.5555],[-37.7009,-60.582],[-37.6012,-60.4525],[-37.6619,-60.378]]},{"name":"San Cayetano","coords":[[-38.0423,-59.6261],[-38.0567,-59.5384],[-38.1134,-59.4161],[-38.1145,-59.3539],[-38.1537,-59.2445],[-38.205,-59.3103],[-38.3035,-59.3539],[-38.3834,-59.3168],[-38.4574,-59.4061],[-38.5006,-59.3347],[-38.5457,-59.3394],[-38.5888,-59.4457],[-38.6043,-59.4314],[-38.5974,-59.4047],[-38.622,-59.4112],[-38.7356,-59.3263],[-38.7858,-59.627],[-38.7426,-59.6262],[-38.7372,-59.647],[-38.6995,-59.6551],[-38.6537,-59.7036],[-38.6369,-59.691],[-38.5335,-59.7339],[-38.4887,-59.7348],[-38.5158,-59.7675],[-38.4751,-59.8218],[-38.5288,-59.8869],[-38.4911,-59.9372],[-38.4396,-59.8747],[-38.3708,-59.9906],[-38.1972,-59.795],[-38.2104,-59.7774],[-38.1908,-59.7548],[-38.1646,-59.7896],[-38.1552,-59.7785],[-38.1469,-59.7897],[-38.0238,-59.6418],[-38.0423,-59.6261]]},{"name":"Tres Arroyos","coords":[[-38.1784,-60.1695],[-38.2806,-60.0371],[-38.1609,-59.8825],[-38.242,-59.8342],[-38.3708,-59.9906],[-38.4396,-59.8747],[-38.4911,-59.9372],[-38.5288,-59.8869],[-38.4751,-59.8218],[-38.5158,-59.7675],[-38.4887,-59.7348],[-38.5335,-59.7339],[-38.6369,-59.691],[-38.6537,-59.7036],[-38.6995,-59.6551],[-38.7372,-59.647],[-38.7426,-59.6262],[-38.7858,-59.627],[-38.8374,-59.854],[-38.9309,-60.5124],[-38.9133,-60.5293],[-38.8841,-60.5216],[-38.8222,-60.5365],[-38.6191,-60.6109],[-38.5865,-60.6125],[-38.5566,-60.5913],[-38.4712,-60.6193],[-38.3648,-60.7453],[-38.2999,-60.7345],[-38.2298,-60.7473],[-38.2242,-60.7196],[-38.117,-60.7248],[-38.1148,-60.7016],[-38.0873,-60.6841],[-38.1919,-60.5494],[-38.1065,-60.4424],[-38.0898,-60.4633],[-38.0163,-60.3704],[-38.1784,-60.1695]]},{"name":"Coronel Dorrego","coords":[[-38.2925,-61.1751],[-38.3103,-60.9917],[-38.4065,-60.8401],[-38.3368,-60.735],[-38.3753,-60.739],[-38.4712,-60.6193],[-38.5566,-60.5913],[-38.5865,-60.6125],[-38.6191,-60.6109],[-38.8222,-60.5365],[-38.8841,-60.5216],[-38.9133,-60.5293],[-38.9309,-60.5124],[-38.9798,-60.8528],[-38.9883,-61.0868],[-38.9473,-61.0868],[-38.9466,-61.3147],[-38.9137,-61.3408],[-38.9137,-61.4561],[-38.9419,-61.4561],[-38.9458,-61.4747],[-38.8579,-61.6629],[-38.8176,-61.6998],[-38.7815,-61.6992],[-38.7534,-61.7217],[-38.6591,-61.7296],[-38.5436,-61.5931],[-38.5004,-61.5266],[-38.5088,-61.5151],[-38.4757,-61.4739],[-38.483,-61.4659],[-38.3754,-61.3295],[-38.3918,-61.319],[-38.2925,-61.1751]]},{"name":"Necochea","coords":[[-37.701,-59.1704],[-37.7369,-59.1655],[-37.7579,-59.1338],[-37.8302,-59.1078],[-37.8793,-59.1646],[-37.9363,-59.1683],[-37.974,-59.1274],[-37.9953,-59.1254],[-38.047,-59.0541],[-38.087,-59.0387],[-38.1554,-58.9542],[-38.1829,-58.9517],[-38.1928,-58.9205],[-38.2454,-58.9071],[-38.2916,-58.8672],[-38.3195,-58.8158],[-38.3777,-58.7825],[-38.4016,-58.7875],[-38.4721,-58.7576],[-38.481,-58.7401],[-38.4887,-58.7519],[-38.516,-58.7399],[-38.4952,-58.7075],[-38.562,-58.6198],[-38.6785,-59.0122],[-38.7356,-59.3263],[-38.622,-59.4112],[-38.5974,-59.4047],[-38.6043,-59.4314],[-38.5888,-59.4457],[-38.5457,-59.3394],[-38.5006,-59.3347],[-38.4574,-59.4061],[-38.3834,-59.3168],[-38.3035,-59.3539],[-38.205,-59.3103],[-38.1537,-59.2445],[-38.1145,-59.3539],[-38.1134,-59.4161],[-38.0567,-59.5384],[-38.044,-59.6224],[-37.9998,-59.6762],[-37.7338,-59.3403],[-37.701,-59.2742],[-37.6164,-59.1848],[-37.6577,-59.1525],[-37.701,-59.1704]]},{"name":"Ayacucho","coords":[[-36.728,-58.1144],[-36.8809,-58.2863],[-37.0768,-58.0203],[-37.0076,-57.9443],[-37.1361,-57.7696],[-37.437,-58.0956],[-37.3882,-58.1636],[-37.4921,-58.2824],[-37.4394,-58.3546],[-37.5007,-58.4268],[-37.3835,-58.5775],[-37.4105,-58.6114],[-37.0626,-59.0898],[-37.025,-59.0403],[-36.9612,-59.0219],[-36.9362,-58.9366],[-36.8755,-58.91],[-36.8607,-58.8722],[-36.8381,-58.8655],[-36.8364,-58.8358],[-36.7894,-58.7903],[-36.7527,-58.7199],[-36.7426,-58.6665],[-36.7002,-58.7208],[-36.452,-58.4376],[-36.6153,-58.2126],[-36.6279,-58.2262],[-36.728,-58.1144]]},{"name":"Lobería","coords":[[-37.8057,-58.5074],[-37.8778,-58.5907],[-38.074,-58.3289],[-38.1595,-58.3433],[-38.2235,-58.3232],[-38.2511,-58.3383],[-38.3156,-58.2838],[-38.3544,-58.2702],[-38.3852,-58.2851],[-38.4458,-58.238],[-38.5375,-58.4976],[-38.562,-58.6198],[-38.4952,-58.7075],[-38.516,-58.7399],[-38.4887,-58.7519],[-38.481,-58.7401],[-38.4363,-58.7742],[-38.3296,-58.8085],[-38.2916,-58.8672],[-38.2454,-58.9071],[-38.1933,-58.9201],[-38.1829,-58.9517],[-38.1554,-58.9542],[-38.087,-59.0387],[-38.0204,-59.0785],[-37.9953,-59.1254],[-37.974,-59.1274],[-37.9363,-59.1683],[-37.8862,-59.168],[-37.578,-58.809],[-37.8057,-58.5074]]}];
+
+function renderADRMap() {
+  const svg = document.getElementById('adr-svg');
+  if (!svg) return;
+  const W=270,H=210,PAD=12;
+  let minLat=99,maxLat=-99,minLon=99,maxLon=-99;
+  ADR_PARTIDOS.forEach(p=>p.coords.forEach(c=>{
+    if(c[0]<minLat)minLat=c[0];if(c[0]>maxLat)maxLat=c[0];
+    if(c[1]<minLon)minLon=c[1];if(c[1]>maxLon)maxLon=c[1];
+  }));
+  const scale=Math.min((W-PAD*2)/(maxLon-minLon),(H-PAD*2)/(maxLat-minLat));
+  const offX=PAD+((W-PAD*2)-(maxLon-minLon)*scale)/2;
+  const offY=PAD+((H-PAD*2)-(maxLat-minLat)*scale)/2;
+  const toX=lon=>offX+(lon-minLon)*scale;
+  const toY=lat=>offY+(maxLat-lat)*scale;
+  // Clave: nombre del polígono SVG → valor: PARTIDO del GeoJSON (en mayúsculas)
+  // Si Benito Juárez aparece en tus datos con otro nombre, ajustá 'JUAREZ' acá
+  const dataMap={'Tandil':'TANDIL','Necochea':'NECOCHEA','Lobería':'LOBERIA','San Cayetano':'SANCAYETANO','Tres Arroyos':'TRESARROYOS','Coronel Dorrego':'DORREGO','Ayacucho':'AYACUCHO','Adolfo Gonzales Chaves':'CHAVES','Benito Juárez':'JUAREZ','Rauch':'RAUCH'};
+  const dataPartidos=new Set(Object.values(dataMap));
+  let html='<defs><filter id="glow"><feGaussianBlur stdDeviation="1.5" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>';
+  ADR_PARTIDOS.forEach(p=>{
+    const key=dataMap[p.name]||'';
+    if(dataPartidos.has(key)) return;
+    const pts=p.coords.map(c=>`${toX(c[1]).toFixed(1)},${toY(c[0]).toFixed(1)}`).join(' ');
+    html+=`<polygon points="${pts}" fill="rgba(74,222,128,0.07)" stroke="#30363d" stroke-width="1" stroke-linejoin="round"/>`;
+  });
+  ADR_PARTIDOS.forEach(p=>{
+    const key=dataMap[p.name]||'';
+    if(!dataPartidos.has(key)) return;
+    const pts=p.coords.map(c=>`${toX(c[1]).toFixed(1)},${toY(c[0]).toFixed(1)}`).join(' ');
+    html+=`<polygon points="${pts}" fill="rgba(74,222,128,0.18)" stroke="#4ade80" stroke-width="1.5" stroke-linejoin="round" filter="url(#glow)"/>`;
+    // Centroide por bounding box (más estable que promedio de vértices)
+    const xs=p.coords.map(c=>toX(c[1])), ys=p.coords.map(c=>toY(c[0]));
+    let cx=(Math.min(...xs)+Math.max(...xs))/2;
+    let cy=(Math.min(...ys)+Math.max(...ys))/2;
+    // Offsets manuales para partidos con formas irregulares
+  });
+  svg.innerHTML=html;
+}
+
+// ── STATE ────────────────────────────────────────────────────────────────────
+let ALL_RECORDS = [];
+let activeCropFilter = 'all';
+let activeSeasons = new Set(['2026','2025','2025F']);
+let activePartidos = new Set();
+let allPartidos = [];
+let charts = {};
+let leafletMap = null;
+let geojsonLayer = null;
+let rawGeoJSON = null;
+
+// ── DATA LOADING ─────────────────────────────────────────────────────────────
+async function loadData() {
+  const bar = document.getElementById('loading-bar');
+  const txt = document.getElementById('loading-text');
+
+  // Si el HTML fue exportado con datos incrustados, usarlos directamente
+  if (window.__INLINE_DATA__) {
+    bar.style.width = '100%';
+    txt.textContent = 'Datos cargados.';
+    return window.__INLINE_DATA__;
+  }
+
+  const v = '?v=' + Date.now();
+
+  // Intenta primero el JSON procesado (más rápido), luego el GeoJSON crudo
+  const sources = [
+    { url: 'Datos/data_procesado.json' + v, type: 'processed' },
+    { url: 'Datos/data.geojson' + v,        type: 'geojson'   },
+  ];
+
+  for (const src of sources) {
+    try {
+      txt.textContent = 'Cargando datos de siembra...';
+      bar.style.width = '40%';
+      const res = await fetch(src.url);
+      if (!res.ok) continue;
+      bar.style.width = '85%';
+      const data = await res.json();
+      bar.style.width = '100%';
+      txt.textContent = 'Iniciando dashboard...';
+      await new Promise(r => setTimeout(r, 200));
+      if (src.type === 'processed') return data;          // ya son records planos
+      rawGeoJSON = data;
+      return processGeoJSON(data);                        // GeoJSON → records
+    } catch(e) {
+      console.warn('No se pudo cargar', src.url, e);
+    }
+  }
+
+  document.getElementById('loading-text').textContent =
+    'Error: no se encontró ningún archivo de datos en Datos/';
+  return [];
+}
+
+function processGeoJSON(geo) {
+  return geo.features.map(f => {
+    const p = f.properties;
+    const cropRaw = p['Crop Name'] || '';
+    const crop = CROP_MAP[cropRaw] || 'OTROS';
+    return {
+      partido: p['PARTIDO'] || '',
+      org: p['Organization Name'] || '',
+      fieldOpId: p['Field Operation ID'] || '',
+      fieldId: p['Field ID'] || '',
+      season: String(p['Crop Season'] || ''),
+      crop,
+      cropRaw,
+
+      measureName: p['Measurement Name'] || '',
+      area: parseFloat(p['Variety Area (ha)'] || p['Area (ha)'] || 0) || 0,
+      totalMaterial: parseFloat(p['Total Material'] || 0) || 0,
+
+      variety: p['Variety Name'] || '—',
+      vin: p['Machine VIN'] || 'N/A',
+      model: p['Machine Model'] || 'N/A',
+      startDate: p['Start Date'] || '',
+      geometry: f.geometry
+    };
+  });
+}
+
+// ── FILTER HELPERS ────────────────────────────────────────────────────────────
+function filteredRecords() {
+  return ALL_RECORDS.filter(r => {
+    if (activeCropFilter !== 'all' && r.crop !== activeCropFilter) return false;
+    if (!activeSeasons.has(r.season)) return false;
+    if (activePartidos.size > 0 && !activePartidos.has(r.partido)) return false;
+    return true;
+  });
+}
+
+function setFilter(crop) {
+  activeCropFilter = crop;
+  document.querySelectorAll('.filter-chip').forEach(c => {
+    c.classList.toggle('active', c.dataset.filter === crop);
+  });
+  refreshAll();
+}
+
+function toggleSeason(s) {
+  if (activeSeasons.has(s)) {
+    if (activeSeasons.size === 1) return;
+    activeSeasons.delete(s);
+  } else {
+    activeSeasons.add(s);
+  }
+  const btn = document.getElementById('sbtn-' + s);
+  if (activeSeasons.has(s)) {
+    btn.classList.add('active-' + s);
+  } else {
+    btn.classList.remove('active-' + s);
+  }
+  refreshAll();
+}
+
+// togglePartido defined in buildPartidoBar block above
+function _unused_togglePartido(p) {
+}
+
+// ── PAGES ─────────────────────────────────────────────────────────────────────
+let currentPage = 1;
+function showPage(n) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page' + n).classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach((b, i) => b.classList.toggle('active', i === n - 1));
+  currentPage = n;
+  if (n === 1) renderPage1();
+  if (n === 2) renderPage2();
+  if (n === 4) renderPage4();
+}
+
+// ── INIT ─────────────────────────────────────────────────────────────────────
+async function init() {
+  ALL_RECORDS = await loadData();
+  allPartidos = [...new Set(ALL_RECORDS.map(r => r.partido))].sort();
+  activePartidos = new Set();
+  buildPartidoBar();
+  renderADRMap();
+  renderPage1();
+  renderPage3();
+  document.getElementById('loading-screen').classList.add('hidden');
+}
+
+function buildPartidoBar() {
+  const bar = document.getElementById('partido-bar');
+  bar.querySelectorAll('.partido-chip, .partido-todos').forEach(e => e.remove());
+
+  const todos = document.createElement('div');
+  todos.className = 'filter-chip partido-todos active';
+  todos.id = 'partido-todos-btn';
+  todos.textContent = 'Todos';
+  todos.onclick = () => {
+    activePartidos.clear();
+    document.querySelectorAll('.partido-chip').forEach(c => c.classList.remove('active'));
+    todos.classList.add('active');
+    refreshAll();
+  };
+  bar.appendChild(todos);
+
+  allPartidos.forEach(p => {
+    const chip = document.createElement('div');
+    chip.className = 'filter-chip partido-chip';
+    chip.dataset.partido = p;
+    chip.textContent = displayPartido(p);
+    chip.onclick = () => togglePartido(p);
+    bar.appendChild(chip);
+  });
+}
+
+function togglePartido(p) {
+  if (activePartidos.has(p)) {
+    activePartidos.delete(p);
+  } else {
+    activePartidos.add(p);
+  }
+  const todosBtn = document.getElementById('partido-todos-btn');
+  if (todosBtn) todosBtn.classList.toggle('active', activePartidos.size === 0);
+  document.querySelectorAll('.partido-chip').forEach(c => {
+    c.classList.toggle('active', activePartidos.has(c.dataset.partido));
+  });
+  refreshAll();
+}
+
+function refreshAll() {
+  renderPage1();
+  renderPage3();
+  if (currentPage === 2) renderPage2();
+  if (currentPage === 4) renderPage4();
+  updateFilterCount();
+}
+
+function updateFilterCount() {
+  const recs = filteredRecords();
+  const ha = recs.reduce((s, r) => s + r.area, 0);
+  document.getElementById('filter-count').textContent =
+    `${recs.length} registros · ${fmt(ha)} ha`;
+}
+
+function fmt(n, dec = 0) {
+  if (!n && n !== 0) return '—';
+  const parts = n.toFixed(dec).split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return parts.length > 1 ? parts[0] + ',' + parts[1] : parts[0];
+}
+
+// ── PAGE 1 ────────────────────────────────────────────────────────────────────
+function renderPage1() {
+  const recs = filteredRecords();
+  updateFilterCount();
+
+  // KPIs by season
+  SEASONS.forEach(s => {
+    const sr = recs.filter(r => r.season === s);
+    const ha = sr.reduce((acc, r) => acc + r.area, 0);
+    const el = document.getElementById('kpi-area-' + s);
+    if (el) el.innerHTML = fmt(ha) + '<span class="kpi-unit">ha</span>';
+  });
+
+  // Delta 2026 vs 2025 — solo si ambas temporadas están activas
+  const deltaEl = document.getElementById('kpi-delta-area');
+  if (deltaEl) {
+    if (activeSeasons.has('2026') && activeSeasons.has('2025')) {
+      const ha26 = recs.filter(r=>r.season==='2026').reduce((a,r)=>a+r.area,0);
+      const ha25 = recs.filter(r=>r.season==='2025').reduce((a,r)=>a+r.area,0);
+      if (ha25 > 0) {
+        const pct = ((ha26 - ha25) / ha25 * 100);
+        const cls = pct >= 0 ? 'up' : 'dn';
+        const sign = pct >= 0 ? '▲' : '▼';
+        deltaEl.className = 'kpi-delta ' + cls;
+        deltaEl.textContent = sign + ' ' + Math.abs(pct).toFixed(1).replace('.', ',') + '% vs 2025';
+      } else {
+        deltaEl.className = 'kpi-delta neu';
+        deltaEl.textContent = '—';
+      }
+    } else {
+      deltaEl.className = 'kpi-delta neu';
+      deltaEl.textContent = '—';
+    }
+  }
+
+  // Donut chart
+  const cropArea = {};
+  recs.forEach(r => { cropArea[r.crop] = (cropArea[r.crop] || 0) + r.area; });
+  const crops = Object.keys(cropArea).sort((a, b) => cropArea[b] - cropArea[a]);
+  const totalHa = Object.values(cropArea).reduce((a, b) => a + b, 0);
+  document.getElementById('dcval').textContent = fmt(totalHa);
+
+  destroyChart('donutChart');
+  charts['donutChart'] = new Chart(document.getElementById('donutChart'), {
+    type: 'doughnut',
+    data: {
+      labels: crops,
+      datasets: [{
+        data: crops.map(c => cropArea[c]),
+        backgroundColor: crops.map(c => CROP_COLORS[c] || '#64748b'),
+        borderWidth: 0,
+        hoverOffset: 4
+      }]
+    },
+    options: {
+      cutout: '70%', responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: {
+        callbacks: { label: ctx => ` ${ctx.label}: ${fmt(ctx.parsed)} ha` }
+      }}
+    }
+  });
+
+  // Crop compare
+  const maxArea = Math.max(...crops.map(c => cropArea[c]), 1);
+  const cropList = document.getElementById('crop-compare-list');
+  cropList.innerHTML = '';
+  crops.forEach(crop => {
+    const item = document.createElement('div');
+    item.className = 'crop-compare-item';
+    let barsHtml = '';
+    SEASONS.forEach(s => {
+      const ha = recs.filter(r => r.crop === crop && r.season === s).reduce((a, r) => a + r.area, 0);
+      if (ha === 0 && !activeSeasons.has(s)) return;
+      const w = (ha / maxArea * 100).toFixed(1);
+      barsHtml += `<div class="cci-bar-row">
+        <span class="cci-bar-lbl t${s}">${s} · ${fmt(ha)} ha</span>
+        <div class="cci-bar-bg"><div class="cci-bar-fill" style="width:${w}%;background:${SEASON_COLORS[s]}"></div></div>
+      </div>`;
+    });
+    item.innerHTML = `<div class="cci-header">
+      <div class="cci-dot" style="background:${CROP_COLORS[crop]||'#64748b'}"></div>
+      <div class="cci-name">${crop}</div>
+      <div style="font-family:'Space Mono',monospace;font-size:10px;color:var(--muted)">${fmt(cropArea[crop])} ha</div>
+    </div><div class="cci-bars">${barsHtml}</div>`;
+    cropList.appendChild(item);
+  });
+
+  // Partido compare
+  const partidoList = document.getElementById('partido-compare-list');
+  partidoList.innerHTML = '';
+  const parArea = {};
+  recs.forEach(r => {
+    if (!parArea[r.partido]) parArea[r.partido] = {};
+    parArea[r.partido][r.season] = (parArea[r.partido][r.season] || 0) + r.area;
+  });
+  const partidos = Object.keys(parArea).sort((a, b) => {
+    const ta = Object.values(parArea[a]).reduce((s,v)=>s+v,0);
+    const tb = Object.values(parArea[b]).reduce((s,v)=>s+v,0);
+    return tb - ta;
+  });
+  const maxPArea = Math.max(...partidos.flatMap(p => Object.values(parArea[p])), 1);
+  partidos.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'partido-row';
+    let barsHtml = '';
+    SEASONS.forEach(s => {
+      const ha = parArea[p][s] || 0;
+      const w = (ha / maxPArea * 100).toFixed(1);
+      barsHtml += `<div class="pb-row">
+        <div class="pb-bg"><div class="pb-fill" style="width:${w}%;background:${SEASON_COLORS[s]}"></div></div>
+        <span class="pb-val t${s}">${fmt(ha)} ha</span>
+      </div>`;
+    });
+    const name = displayPartido(p);
+    row.innerHTML = `<div class="partido-name">${name}</div><div class="partido-bars">${barsHtml}</div>`;
+    row.onclick = () => togglePartido(p);
+    partidoList.appendChild(row);
+  });
+}
+
+// ── PAGE 2 ────────────────────────────────────────────────────────────────────
+function renderPage2() {
+  const recs = filteredRecords();
+  const partidos = [...new Set(recs.map(r => r.partido))].sort();
+
+  // Area por partido
+  destroyChart('areaPartidoChart');
+  charts['areaPartidoChart'] = new Chart(document.getElementById('areaPartidoChart'), {
+    type: 'bar',
+    data: {
+      labels: partidos.map(p => displayPartido(p)),
+      datasets: SEASONS.map(s => ({
+        label: s,
+        data: partidos.map(p => recs.filter(r=>r.partido===p&&r.season===s).reduce((a,r)=>a+r.area,0)),
+        backgroundColor: SEASON_COLORS[s] + '99', borderColor: SEASON_COLORS[s], borderWidth: 1, borderRadius: 3
+      }))
+    },
+    options: barOpts('ha')
+  });
+
+  // Area por cultivo
+  const crops = [...new Set(recs.map(r=>r.crop))].sort();
+  destroyChart('areaCropChart');
+  charts['areaCropChart'] = new Chart(document.getElementById('areaCropChart'), {
+    type: 'bar',
+    data: {
+      labels: crops,
+      datasets: SEASONS.map(s => ({
+        label: s,
+        data: crops.map(c => recs.filter(r=>r.crop===c&&r.season===s).reduce((a,r)=>a+r.area,0)),
+        backgroundColor: SEASON_COLORS[s] + '99', borderColor: SEASON_COLORS[s], borderWidth: 1, borderRadius: 3
+      }))
+    },
+    options: barOpts('ha')
+  });
+
+
+  // Área por productor (multi-season only)
+  const orgSeasons = {};
+  recs.forEach(r => {
+    if (!orgSeasons[r.org]) orgSeasons[r.org] = new Set();
+    orgSeasons[r.org].add(r.season);
+  });
+  const multiOrgs = Object.entries(orgSeasons).filter(([,v])=>v.size>1).map(([k])=>k).sort();
+  const displayOrgs = multiOrgs.length > 0 ? multiOrgs : [...new Set(recs.map(r=>r.org))].sort();
+  destroyChart('orgAreaChart');
+  charts['orgAreaChart'] = new Chart(document.getElementById('orgAreaChart'), {
+    type: 'bar',
+    data: {
+      labels: displayOrgs.map(o => o.length > 18 ? o.slice(0,18)+'…' : o),
+      datasets: SEASONS.map(s => ({
+        label: s,
+        data: displayOrgs.map(o => recs.filter(r=>r.org===o&&r.season===s).reduce((a,r)=>a+r.area,0)),
+        backgroundColor: SEASON_COLORS[s] + '99', borderColor: SEASON_COLORS[s], borderWidth: 1, borderRadius: 3
+      }))
+    },
+    options: barOpts('ha')
+  });
+}
+
+function barOpts(unit, dec = 0) {
+  return {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { labels: { color: '#8b949e', font: { size: 10 }, boxWidth: 10 } },
+      tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmt(ctx.parsed.y, dec)} ${unit}` } }
+    },
+    scales: {
+      x: { ticks: { color: '#8b949e', font: { size: 9 } }, grid: { color: '#21262d' } },
+      y: { ticks: { color: '#8b949e', font: { size: 9 } }, grid: { color: '#21262d' } }
+    }
+  };
+}
+
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+}
+
+// ── PAGE 3 ────────────────────────────────────────────────────────────────────
+let tableRows = [];
+let firmaFilter = '';
+
+function renderPage3() {
+  const recs = filteredRecords();
+  tableRows = recs;
+  renderTableRows();
+}
+
+function renderTableRows() {
+  const q = firmaFilter.toLowerCase();
+  const rows = q ? tableRows.filter(r => r.org.toLowerCase().includes(q)) : tableRows;
+  document.getElementById('firma-count').textContent = rows.length + ' registros';
+  const tbody = document.getElementById('table-body');
+  const html = rows.map(r => {
+    const cropColor = CROP_COLORS[r.crop] || '#64748b';
+    return `<tr>
+      <td><span class="td-season t${r.season}">${r.season}</span></td>
+      <td class="td-partido">${displayPartido(r.partido)}</td>
+      <td>${r.org}</td>
+      <td><span class="td-crop"><span class="td-dot" style="background:${cropColor}"></span>${r.crop}</span></td>
+      <td style="color:var(--muted);font-size:10px">${r.variety}</td>
+      <td class="td-right">${fmt(r.area, 2)}</td>
+      <td class="td-right">${r.totalMaterial > 0 ? fmt(r.totalMaterial, 0) : '—'}</td>
+      <td style="font-size:10px;color:var(--muted)">${r.model !== 'N/A' ? r.model : '—'}</td>
+    </tr>`;
+  }).join('');
+  tbody.innerHTML = html;
+}
+
+function onFirmaSearch(v) { firmaFilter = v; renderTableRows(); }
+function clearFirmaSearch() {
+  firmaFilter = '';
+  document.getElementById('firma-search').value = '';
+  renderTableRows();
+}
+
+// ── PAGE 4 ────────────────────────────────────────────────────────────────────
+function renderPage4() {
+  const recs = filteredRecords().filter(r => r.model !== 'N/A' && r.vin !== 'N/A');
+
+  const byVin = {};
+  recs.forEach(r => {
+    const key = r.vin;
+    if (!byVin[key]) byVin[key] = { model: r.model, vin: r.vin, area: 0, seasons: new Set(), crops: new Set(), orgs: new Set() };
+    byVin[key].area += r.area;
+    byVin[key].seasons.add(r.season);
+    byVin[key].crops.add(r.crop);
+    byVin[key].orgs.add(r.org);
+  });
+  const machines = Object.values(byVin);
+  const models = [...new Set(machines.map(m => m.model))];
+
+  document.getElementById('maq-total').textContent = machines.length || '—';
+  document.getElementById('maq-modelos-count').textContent = models.length || '—';
+  const pills = document.getElementById('maq-model-pills');
+  pills.innerHTML = models.map(m => `<span class="maq-model-pill">${m}</span>`).join('');
+  const totalHa = machines.reduce((s,m)=>s+m.area,0);
+  document.getElementById('maq-ha-prom').textContent = machines.length ? fmt(totalHa/machines.length, 0) : '—';
+  const byModel = {};
+  machines.forEach(m => { byModel[m.model] = (byModel[m.model]||0) + m.area; });
+  const topModel = Object.entries(byModel).sort((a,b)=>b[1]-a[1])[0];
+  if (topModel) {
+    document.getElementById('maq-top-model').textContent = topModel[0];
+    document.getElementById('maq-top-model-sub').textContent = fmt(topModel[1],0) + ' ha sembradas';
+  }
+
+  const modelsSorted = Object.entries(byModel).sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
+  destroyChart('maqAreaModelChart');
+  charts['maqAreaModelChart'] = new Chart(document.getElementById('maqAreaModelChart'), {
+    type: 'bar',
+    data: {
+      labels: modelsSorted,
+      datasets: [{ label: 'ha', data: modelsSorted.map(m=>byModel[m]||0), backgroundColor: '#4ade8099', borderColor: '#4ade80', borderWidth: 1, borderRadius: 3 }]
+    },
+    options: { ...barOpts('ha'), plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${fmt(ctx.parsed.y)} ha` } } } }
+  });
+
+  const allMachines = machines.sort((a,b)=>b.area-a.area);
+  const tbody = document.getElementById('maq-table-body');
+  tbody.innerHTML = allMachines.map(m => {
+    const seasChips = [...m.seasons].sort().map(s => `<span class="maq-season-chip t${s}">${s}</span>`).join('');
+    return `<tr>
+      <td class="maq-tag-model">${m.model}</td>
+      <td style="color:var(--muted);font-size:9px">${m.vin}</td>
+      <td><div class="maq-season-chips">${seasChips}</div></td>
+      <td style="text-align:right">${fmt(m.area, 2)}</td>
+      <td style="font-size:9px;color:var(--muted)">${[...m.crops].join(', ')}</td>
+      <td style="font-size:9px;color:var(--muted)">${[...m.orgs].slice(0,3).join(', ')}</td>
+    </tr>`;
+  }).join('');
+}
+
+
+// ── EXPORT ────────────────────────────────────────────────────────────────────
+function exportHTML() {
+  // Inject data inline so the exported file works without a server
+  const dataScript = `<script id="inline-data">window.__INLINE_DATA__ = ${JSON.stringify(ALL_RECORDS)};<\/script>`;
+  const html = document.documentElement.outerHTML.replace('</head>', dataScript + '</head>');
+  const blob = new Blob([html], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'dashboard_siembra.html';
+  a.click();
+}
+
+init();
+</script>
+</body>
+</html>
